@@ -1,0 +1,15 @@
+version: "3"
+
+services:
+  lecbh-test:
+    build: .
+    container_name: lecbh-test
+    privileged: true # Required for systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - ./lecbh.sh:/app/lecbh.sh
+    ports:
+      - "80:80"
+      - "443:443"
+    # Keep the container running
+    tty: true
