@@ -1,58 +1,146 @@
 # lecbh
 
-**lecbh** (Let's Encrypt Certbot Helper) is a lightweight bash script that automates SSL certificate setup using Certbot on Ubuntu servers running Apache.
+**lecbh** (Let's Encrypt Certbot Helper) is a lightweight bash script that automates SSL certificate setup using Certbot on Ubuntu servers running Apache or Nginx.
 
-## ✨ Features
+## Features
 
-- Installs Certbot if not present
-- Obtains and installs Let's Encrypt SSL certificates
+- Automatically installs and configures Let's Encrypt SSL certificates
+- Supports both Apache and Nginx web servers
 - Sets up automatic certificate renewal
-- Works with Apache on Ubuntu
+- Validates domain configuration before requesting certificates
+- Supports multiple domains in a single certificate
+- Includes dry-run mode for testing without making changes
+- Provides staging mode for development without hitting rate limits
+- Works with unattended mode for automated deployments
 
-## 🚀 Quick Start
+## Requirements
+
+- Ubuntu (tested on 20.04 / 22.04)
+- Apache2 or Nginx installed and running
+- Domain name(s) pointing to your server's public IP
+- Ports 80 and 443 open on your firewall
+
+## Installation
+
+Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/lecbh.git
+git clone https://github.com/pa-ulander/lecbh.git
 cd lecbh
+```
+
+Make the script executable:
+
+```bash
+chmod +x lecbh.sh
+```
+
+## Usage
+
+### Basic Usage
+
+Run the script with sudo:
+
+```bash
 sudo ./lecbh.sh
 ```
 
-> Make sure you run the script as `sudo` and have your domain already pointed to the server.
+The script will prompt you for:
+- Domain name(s) (comma-separated for multiple domains)
+- Email address for Let's Encrypt registration
+- Web server type (Apache or Nginx)
 
-## 📋 Requirements
+### Command Line Options
 
-- Ubuntu (tested on 20.04 / 22.04)
-- Apache2 installed and running
-- Domain name pointing to the server's public IP
-- Port 80/443 open on your firewall
+```
+Usage: sudo ./lecbh.sh [OPTIONS]
 
-## 🔧 What It Does
+Options:
+  --dry-run      Test run without making actual changes
+  --unattended   Run with default values without prompting
+  --verbose      Show more detailed output
+  --staging      Use Let's Encrypt staging environment (for testing)
+  --help         Show this help message
+```
 
-- Installs Certbot via Snap if not already installed
-- Verifies Apache is running
-- Obtains a Let's Encrypt certificate for your domain
-- Configures Apache to use the certificate
-- Sets up automatic renewal with `certbot renew`
+### Examples
 
-## 📅 Renewal Check
+Test run without making changes:
+```bash
+sudo ./lecbh.sh --dry-run
+```
 
-Let's Encrypt certificates expire every 90 days. This script ensures your system is set up with a cron or systemd job to renew automatically. You can test renewal with:
+Run with default values without prompting:
+```bash
+sudo ./lecbh.sh --unattended
+```
+
+Use staging environment for development:
+```bash
+sudo ./lecbh.sh --staging
+```
+
+Show detailed output:
+```bash
+sudo ./lecbh.sh --verbose
+```
+
+### Default Configuration
+
+You can modify the default values at the top of the script:
+
+```bash
+# -------------------- CONFIG --------------------
+DEFAULT_EMAIL="admin@example.com"
+DEFAULT_DOMAINS="example.com"
+DEFAULT_SERVER="apache" # Change to nginx if preferred
+# -------------------------------------------------
+```
+
+## Certificate Renewal
+
+Let's Encrypt certificates expire every 90 days. The script ensures your system is set up with a systemd timer to renew automatically.
+
+You can test the renewal process with:
 
 ```bash
 sudo certbot renew --dry-run
 ```
 
-## 🛠️ To Do
+To check the status of the renewal timer:
 
-- [ ] Support for Nginx
-- [ ] Wildcard domain support
-- [ ] Log output and error handling improvements
-- [ ] Unattended install flags
+```bash
+systemctl status certbot.timer
+```
 
-## 📜 License
+## Development and Testing
 
-MIT
+For development and testing, use the `--staging` flag to avoid hitting Let's Encrypt rate limits. Staging certificates are not trusted by browsers but work identically for testing purposes.
 
----
+Docker can be used for testing the script in an isolated environment. See the included Dockerfile and docker-compose.yml for details.
 
-Pull requests welcome!
+## Troubleshooting
+
+### Common Issues
+
+1. **Domain not reachable**: Ensure your domain's DNS records point to your server's IP address.
+
+2. **Port 80/443 not accessible**: Check your firewall settings and ensure your web server is properly configured.
+
+3. **Web server not running**: Make sure Apache or Nginx is installed and running.
+
+4. **Rate limits**: If you hit Let's Encrypt rate limits, use the `--staging` flag for testing.
+
+### Logs
+
+Certbot logs can be found at:
+- `/var/log/letsencrypt/letsencrypt.log`
+
+## Unlicense
+
+This project is licensed under the UNLICENCE License - see the UNLICENSE file for details.
+
+## Acknowledgments
+
+- [Let's Encrypt](https://letsencrypt.org/) for providing free SSL certificates
+- [Certbot](https://certbot.eff.org/) for the excellent certificate management tool
