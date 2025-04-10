@@ -1,4 +1,3 @@
-# Use Ubuntu as base image
 FROM ubuntu:22.04
 
 # Install systemd - this is a special setup for running systemd in Docker
@@ -22,6 +21,9 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     iputils-ping \
     dnsutils \
+    python3 \
+    python3-pip \
+    python3-venv \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
