@@ -12,17 +12,25 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # Instead of caching APT packages directly, we'll use a different approach
+      # We'll create a cache key based on the apt packages we need
       - name: Cache APT packages
-        uses: actions/cache@v3
         id: apt-cache
+        uses: actions/cache@v3
         with:
-          path: /var/cache/apt/archives
+          path: ~/apt-cache
           key: ${{ runner.os }}-apt-${{ hashFiles('**/test.yml') }}
           restore-keys: |
             ${{ runner.os }}-apt-
 
       - name: Install dependencies
         run: |
+          # Create a directory for our APT cache if it doesn't exist
+          mkdir -p ~/apt-cache
+
+          # Configure APT to use our cache directory
+          echo "Dir::Cache::Archives $HOME/apt-cache;" | sudo tee /etc/apt/apt.conf.d/01cache
+
           sudo apt-get update
           # Use --no-install-recommends to minimize installation size
           sudo apt-get install -y --no-install-recommends apache2 nginx certbot python3-certbot-apache python3-certbot-nginx netcat-openbsd
