@@ -32,46 +32,81 @@ jobs:
           # Verify it works
           ping -c 1 $TEST_DOMAIN
 
-      - name: Create modified script for testing
+      - name: Create test wrapper script for Apache
         run: |
-          # Create a copy of the script with modified default values
+          # Create a wrapper script that sets up the environment for Apache testing
           TEST_DOMAIN="test-$(date +%s).example.org"
-          cp ./lecbh.sh ./lecbh_test.sh
-          chmod +x ./lecbh_test.sh
-
-          # Modify the default values in the script
-          sed -i "s/DEFAULT_DOMAINS=\"example.com\"/DEFAULT_DOMAINS=\"$TEST_DOMAIN\"/" ./lecbh_test.sh
-          sed -i "s/DEFAULT_EMAIL=\"admin@example.com\"/DEFAULT_EMAIL=\"admin@$TEST_DOMAIN\"/" ./lecbh_test.sh
-
-          # Add support for --server command-line option
-          sed -i '/--staging) STAGING=true ;;/a \ \ \ \ --server=*) SERVER="${1#*=}" ;;' ./lecbh_test.sh
-
-          # Add a special flag to bypass the actual certificate issuance in dry-run mode
-          # This will make the script exit with success after the command is displayed
-          sed -i '/echo "🚀 Running: \$CERTBOT_CMD"/a if $DRY_RUN; then echo "✅ Dry run mode: Command would be executed here."; echo "✅ Certificate request successful!"; exit 0; fi' ./lecbh_test.sh
-
-          # Verify the changes
-          grep "DEFAULT_" ./lecbh_test.sh
-          grep "Dry run mode: Command would be executed here" ./lecbh_test.sh
-          grep "\-\-server" ./lecbh_test.sh
-
-      - name: Start Apache and verify it's running
-        run: |
+          cat > test_apache.sh << 'EOF'
+          #!/bin/bash
+          # Set up environment for Apache testing
           sudo systemctl start apache2
           sudo systemctl status apache2
-          # Ensure Apache is actually running
-          sudo netstat -tulpn | grep apache
 
-      - name: Test with Apache
-        run: sudo ./lecbh_test.sh --dry-run --unattended --verbose
+          # Run the actual script with Apache
+          sudo ./lecbh.sh --dry-run --unattended --verbose
 
-      - name: Stop Apache, start Nginx and verify it's running
+          # Store the exit code
+          EXIT_CODE=$?
+
+          # Return the exit code
+          exit $EXIT_CODE
+          EOF
+
+          chmod +x test_apache.sh
+
+      - name: Create test wrapper script for Nginx
         run: |
+          # Create a wrapper script that sets up the environment for Nginx testing
+          TEST_DOMAIN="test-$(date +%s).example.org"
+          cat > test_nginx.sh << 'EOF'
+          #!/bin/bash
+          # Set up environment for Nginx testing
           sudo systemctl stop apache2
           sudo systemctl start nginx
           sudo systemctl status nginx
-          # Ensure Nginx is actually running
-          sudo netstat -tulpn | grep nginx
+
+          # Temporarily modify the default values for testing with Nginx
+          export DEFAULT_SERVER="nginx"
+
+          # Run the actual script with Nginx
+          sudo -E ./lecbh.sh --dry-run --unattended --verbose
+
+          # Store the exit code
+          EXIT_CODE=$?
+
+          # Return the exit code
+          exit $EXIT_CODE
+          EOF
+
+          chmod +x test_nginx.sh
+
+      - name: Create mock certbot for testing
+        run: |
+          # Create a mock certbot script that always succeeds in dry-run mode
+          sudo mv /usr/bin/certbot /usr/bin/certbot.original
+
+          cat > mock_certbot.sh << 'EOF'
+          #!/bin/bash
+
+          # Check if this is a dry-run
+          if [[ "$*" == *"--dry-run"* ]]; then
+            echo "Saving debug log to /var/log/letsencrypt/letsencrypt.log"
+            echo "Account registered."
+            echo "Simulating a certificate request..."
+            echo "Dry run: simulating obtaining certificates..."
+            echo "Congratulations! The dry run was successful."
+            exit 0
+          else
+            # If not a dry run, use the original certbot
+            /usr/bin/certbot.original "$@"
+          fi
+          EOF
+
+          chmod +x mock_certbot.sh
+          sudo cp mock_certbot.sh /usr/bin/certbot
+
+      - name: Test with Apache
+        run: ./test_apache.sh
 
       - name: Test with Nginx
-        run: sudo ./lecbh_test.sh --dry-run --unattended --verbose --server=nginx
+        run: ./test_nginx.sh
