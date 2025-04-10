@@ -48,15 +48,15 @@ jobs:
           
           # Modify the unattended mode section to use SERVER_CLI if provided
           sed -i '/if \$UNATTENDED; then/,/else/c\
-if \$UNATTENDED; then\
-    DOMAIN_INPUT=\$DEFAULT_DOMAINS\
-    EMAIL=\$DEFAULT_EMAIL\
-    SERVER=\${SERVER_CLI:-\$DEFAULT_SERVER}\
-    echo "🤖 Running in unattended mode with default values:"\
-    echo "   Domains: \$DOMAIN_INPUT"\
-    echo "   Email: \$EMAIL"\
-    echo "   Server: \$SERVER"\
-else' ./lecbh_test.sh
+          if \$UNATTENDED; then\
+              DOMAIN_INPUT=\$DEFAULT_DOMAINS\
+              EMAIL=\$DEFAULT_EMAIL\
+              SERVER=\${SERVER_CLI:-\$DEFAULT_SERVER}\
+              echo "🤖 Running in unattended mode with default values:"\
+              echo "   Domains: \$DOMAIN_INPUT"\
+              echo "   Email: \$EMAIL"\
+              echo "   Server: \$SERVER"\
+          else' ./lecbh_test.sh
 
           # Add a special flag to bypass the actual certificate issuance in dry-run mode
           # This will make the script exit with success after the command is displayed
