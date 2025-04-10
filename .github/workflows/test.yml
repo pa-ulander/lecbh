@@ -2,42 +2,48 @@ name: Test Script
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y apache2 nginx certbot python3-certbot-apache python3-certbot-nginx netcat-openbsd
-          
+
       - name: Make script executable
         run: chmod +x ./lecbh.sh
-      
-      - name: Run tests in dry-run mode
-        run: sudo ./lecbh.sh --dry-run --unattended --verbose
-        
-      - name: Test with Apache
+
+      - name: Configure hosts file for testing
         run: |
-          # Start Apache
+          # Add example.com to hosts file to make it "reachable"
+          echo "127.0.0.1 example.com" | sudo tee -a /etc/hosts
+          # Verify it works
+          ping -c 1 example.com
+
+      - name: Start Apache and verify it's running
+        run: |
           sudo systemctl start apache2
           sudo systemctl status apache2
-          
-          # Run test with Apache
-          sudo ./lecbh.sh --dry-run --unattended --verbose
-          
-      - name: Test with Nginx
+          # Ensure Apache is actually running
+          sudo netstat -tulpn | grep apache
+
+      - name: Test with Apache
+        run: sudo ./lecbh.sh --dry-run --unattended --verbose
+
+      - name: Stop Apache, start Nginx and verify it's running
         run: |
-          # Stop Apache and start Nginx
           sudo systemctl stop apache2
           sudo systemctl start nginx
           sudo systemctl status nginx
-          
-          # Run test with Nginx (explicitly specify)
-          sudo ./lecbh.sh --dry-run --unattended --verbose --server nginx
+          # Ensure Nginx is actually running
+          sudo netstat -tulpn | grep nginx
+
+      - name: Test with Nginx
+        run: sudo ./lecbh.sh --dry-run --unattended --verbose --server nginx
