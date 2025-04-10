@@ -117,9 +117,13 @@ systemctl status certbot.timer
 
 ## Development and Testing
 
+## Development and Testing
+
 For development and testing, use the `--staging` flag to avoid hitting Let's Encrypt rate limits. Staging certificates are not trusted by browsers but work identically for testing purposes.
 
 Docker can be used for testing the script in an isolated environment. See the included Dockerfile and docker-compose.yml for details.
+
+For detailed information about testing procedures and environments, see the [Testing documentation](Testing.md).
 
 ## Troubleshooting
 
