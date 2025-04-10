@@ -12,10 +12,20 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Cache APT packages
+        uses: actions/cache@v3
+        id: apt-cache
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/test.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y apache2 nginx certbot python3-certbot-apache python3-certbot-nginx netcat-openbsd
+          # Use --no-install-recommends to minimize installation size
+          sudo apt-get install -y --no-install-recommends apache2 nginx certbot python3-certbot-apache python3-certbot-nginx netcat-openbsd
 
       - name: Make script executable
         run: chmod +x ./lecbh.sh
@@ -45,7 +55,7 @@ jobs:
 
           # Add support for --server command-line option
           sed -i '/--staging) STAGING=true ;;/a \ \ \ \ --server=*) SERVER_CLI="${1#*=}" ;;' ./lecbh_test.sh
-          
+
           # Modify the unattended mode section to use SERVER_CLI if provided
           sed -i '/if \$UNATTENDED; then/,/else/c\
           if \$UNATTENDED; then\
