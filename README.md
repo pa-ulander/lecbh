@@ -1,4 +1,6 @@
-# lecbh
+[![Test Status](https://github.com/pa-ulander/lecbh/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/pa-ulander/lecbh/actions/workflows/test.yml)
+
+# lecbh 
 
 **lecbh** (Let's Encrypt Certbot Helper) is a lightweight bash script that automates SSL certificate setup using Certbot on Ubuntu servers running Apache or Nginx.
 
