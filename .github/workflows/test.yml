@@ -12,47 +12,32 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-docker-compose-${{ hashFiles('**/Dockerfile', '**/docker-compose.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-docker-compose-
-      
-      - name: Build Docker Compose images with cache
+      - name: Install dependencies
         run: |
-          # Export buildx cache to Docker
-          docker buildx create --use
-          docker compose build --build-arg BUILDKIT_INLINE_CACHE=1
+          sudo apt-get update
+          sudo apt-get install -y apache2 nginx certbot python3-certbot-apache python3-certbot-nginx netcat-openbsd
+          
+      - name: Make script executable
+        run: chmod +x ./lecbh.sh
       
-      - name: Run tests
+      - name: Run tests in dry-run mode
+        run: sudo ./lecbh.sh --dry-run --unattended --verbose
+        
+      - name: Test with Apache
         run: |
-          # Start containers
-          docker compose up -d
+          # Start Apache
+          sudo systemctl start apache2
+          sudo systemctl status apache2
           
-          # Wait a bit longer for container to fully initialize
-          sleep 10
+          # Run test with Apache
+          sudo ./lecbh.sh --dry-run --unattended --verbose
           
-          # Check container status
-          docker compose ps
+      - name: Test with Nginx
+        run: |
+          # Stop Apache and start Nginx
+          sudo systemctl stop apache2
+          sudo systemctl start nginx
+          sudo systemctl status nginx
           
-          # Check container logs to see why it might be exiting
-          docker compose logs
-          
-          # Check if container is actually running
-          if docker compose ps --status running | grep -q lecbh-test; then
-            echo "Container is running, proceeding with tests"
-            # Run the test command
-            docker compose exec -T lecbh-test /app/lecbh.sh --dry-run --unattended
-          else
-            echo "Container is not running, checking logs"
-            docker compose logs lecbh-test
-            exit 1
-          fi
-          
-          # Clean up
-          docker compose down
+          # Run test with Nginx (explicitly specify)
+          sudo ./lecbh.sh --dry-run --unattended --verbose --server nginx
