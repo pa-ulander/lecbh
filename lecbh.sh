@@ -101,10 +101,10 @@ if $UNATTENDED; then
 else
     read -p "🌐 Enter domain(s), comma-separated (e.g., example.com,www.example.com): " DOMAIN_INPUT
     DOMAIN_INPUT=${DOMAIN_INPUT:-$DEFAULT_DOMAINS}
-    
+
     read -p "📧 Enter email for Let's Encrypt registration: " EMAIL
     EMAIL=${EMAIL:-$DEFAULT_EMAIL}
-    
+
     read -p "🖥️ Which web server are you using? (apache/nginx) [default: $DEFAULT_SERVER]: " SERVER
     SERVER=${SERVER:-$DEFAULT_SERVER}
 fi
@@ -125,7 +125,7 @@ if ! ping -c 1 "$MAIN_DOMAIN" &>/dev/null; then
     echo "⚠️ Warning: Domain $MAIN_DOMAIN doesn't seem reachable."
     echo "   This could indicate DNS is not properly configured."
     echo "   Make sure the domain points to this server's IP address."
-    
+
     if ! $UNATTENDED; then
         read -p "Continue anyway? (y/n): " choice
         [[ "$choice" != "y" ]] && exit 1
@@ -166,7 +166,7 @@ echo "🔍 Checking if port 80 is accessible..."
 if ! nc -z localhost 80 >/dev/null 2>&1; then
     echo "⚠️ Warning: Port 80 doesn't seem to be accessible locally."
     echo "   Let's Encrypt requires port 80 for domain validation."
-    
+
     if ! $UNATTENDED; then
         read -p "Continue anyway? (y/n): " choice
         [[ "$choice" != "y" ]] && exit 1
@@ -182,7 +182,7 @@ echo "🔍 Checking if port 443 is accessible..."
 if ! nc -z localhost 443 >/dev/null 2>&1; then
     echo "⚠️ Warning: Port 443 doesn't seem to be accessible locally."
     echo "   HTTPS requires port 443 to be open."
-    
+
     if ! $UNATTENDED; then
         read -p "Continue anyway? (y/n): " choice
         [[ "$choice" != "y" ]] && exit 1
@@ -209,10 +209,11 @@ if ! $DRY_RUN && ! $STAGING; then
 fi
 
 # Build certbot command
-CERTBOT_CMD="certbot $CERTBOT_PLUGIN $DOMAIN_ARGS --email $EMAIL --agree-tos --redirect --non-interactive"
 if $DRY_RUN; then
     echo "🧪 Running in dry-run mode (no changes will be made)."
-    CERTBOT_CMD+=" --dry-run"
+    CERTBOT_CMD="certbot certonly $CERTBOT_PLUGIN $DOMAIN_ARGS --email $EMAIL --agree-tos --redirect --non-interactive --dry-run"
+else
+    CERTBOT_CMD="certbot $CERTBOT_PLUGIN $DOMAIN_ARGS --email $EMAIL --agree-tos --redirect --non-interactive"
 fi
 
 # Add staging flag if enabled
@@ -226,7 +227,10 @@ echo "🚀 Running: $CERTBOT_CMD"
 if $VERBOSE; then
     eval $CERTBOT_CMD
 else
-    eval $CERTBOT_CMD >/dev/null 2>&1 && echo "✅ Certificate request successful!" || { echo "❌ Certificate request failed!"; exit 1; }
+    eval $CERTBOT_CMD >/dev/null 2>&1 && echo "✅ Certificate request successful!" || {
+        echo "❌ Certificate request failed!"
+        exit 1
+    }
 fi
 
 # Renewal test
@@ -235,9 +239,12 @@ if ! $DRY_RUN; then
     if $VERBOSE; then
         certbot renew --dry-run
     else
-        certbot renew --dry-run >/dev/null 2>&1 && echo "✅ Renewal test successful!" || { echo "❌ Renewal test failed!"; exit 1; }
+        certbot renew --dry-run >/dev/null 2>&1 && echo "✅ Renewal test successful!" || {
+            echo "❌ Renewal test failed!"
+            exit 1
+        }
     fi
-    
+
     # Check renewal service
     if systemctl is-active --quiet certbot.timer; then
         echo "✅ Automatic renewal service is active."
