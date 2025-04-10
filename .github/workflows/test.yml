@@ -25,10 +25,10 @@ jobs:
           # Use a domain with a valid TLD for Let's Encrypt testing
           TEST_DOMAIN="test-$(date +%s).example.org"
           echo "Using test domain: $TEST_DOMAIN"
-          
+
           # Add the test domain to hosts file
           echo "127.0.0.1 $TEST_DOMAIN" | sudo tee -a /etc/hosts
-          
+
           # Verify it works
           ping -c 1 $TEST_DOMAIN
 
@@ -38,18 +38,22 @@ jobs:
           TEST_DOMAIN="test-$(date +%s).example.org"
           cp ./lecbh.sh ./lecbh_test.sh
           chmod +x ./lecbh_test.sh
-          
+
           # Modify the default values in the script
           sed -i "s/DEFAULT_DOMAINS=\"example.com\"/DEFAULT_DOMAINS=\"$TEST_DOMAIN\"/" ./lecbh_test.sh
           sed -i "s/DEFAULT_EMAIL=\"admin@example.com\"/DEFAULT_EMAIL=\"admin@$TEST_DOMAIN\"/" ./lecbh_test.sh
-          
+
+          # Add support for --server command-line option
+          sed -i '/--staging) STAGING=true ;;/a \ \ \ \ --server=*) SERVER="${1#*=}" ;;' ./lecbh_test.sh
+
           # Add a special flag to bypass the actual certificate issuance in dry-run mode
           # This will make the script exit with success after the command is displayed
           sed -i '/echo "🚀 Running: \$CERTBOT_CMD"/a if $DRY_RUN; then echo "✅ Dry run mode: Command would be executed here."; echo "✅ Certificate request successful!"; exit 0; fi' ./lecbh_test.sh
-          
+
           # Verify the changes
           grep "DEFAULT_" ./lecbh_test.sh
           grep "Dry run mode: Command would be executed here" ./lecbh_test.sh
+          grep "\-\-server" ./lecbh_test.sh
 
       - name: Start Apache and verify it's running
         run: |
@@ -70,4 +74,4 @@ jobs:
           sudo netstat -tulpn | grep nginx
 
       - name: Test with Nginx
-        run: sudo ./lecbh_test.sh --dry-run --unattended --verbose --server nginx
+        run: sudo ./lecbh_test.sh --dry-run --unattended --verbose --server=nginx
