@@ -12,28 +12,29 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Instead of caching APT packages directly, we'll use a different approach
-      # We'll create a cache key based on the apt packages we need
-      - name: Cache APT packages
-        id: apt-cache
+      # We'll use a simpler approach - just cache the installed packages status
+      - name: Cache installed packages
         uses: actions/cache@v3
         with:
-          path: ~/apt-cache
-          key: ${{ runner.os }}-apt-${{ hashFiles('**/test.yml') }}
+          path: |
+            ~/.cache/pip
+            ${{ github.workspace }}/.installed-packages
+          key: ${{ runner.os }}-packages-${{ hashFiles('**/test.yml') }}
           restore-keys: |
-            ${{ runner.os }}-apt-
+            ${{ runner.os }}-packages-
 
       - name: Install dependencies
         run: |
-          # Create a directory for our APT cache if it doesn't exist
-          mkdir -p ~/apt-cache
-
-          # Configure APT to use our cache directory
-          echo "Dir::Cache::Archives $HOME/apt-cache;" | sudo tee /etc/apt/apt.conf.d/01cache
-
-          sudo apt-get update
-          # Use --no-install-recommends to minimize installation size
-          sudo apt-get install -y --no-install-recommends apache2 nginx certbot python3-certbot-apache python3-certbot-nginx netcat-openbsd
+          # Check if we've already installed the packages
+          if [ ! -f "${{ github.workspace }}/.installed-packages" ]; then
+            sudo apt-get update
+            # Use --no-install-recommends to minimize installation size
+            sudo apt-get install -y --no-install-recommends apache2 nginx certbot python3-certbot-apache python3-certbot-nginx netcat-openbsd
+            # Create a marker file with timestamp to indicate packages are installed
+            date > "${{ github.workspace }}/.installed-packages"
+          else
+            echo "Using cached packages. Installed on: $(cat ${{ github.workspace }}/.installed-packages)"
+          fi
 
       - name: Make script executable
         run: chmod +x ./lecbh.sh
