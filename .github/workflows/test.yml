@@ -31,7 +31,28 @@ jobs:
       
       - name: Run tests
         run: |
+          # Start containers
           docker compose up -d
-          sleep 5
-          docker compose exec -T lecbh-test /app/lecbh.sh --dry-run --unattended
+          
+          # Wait a bit longer for container to fully initialize
+          sleep 10
+          
+          # Check container status
+          docker compose ps
+          
+          # Check container logs to see why it might be exiting
+          docker compose logs
+          
+          # Check if container is actually running
+          if docker compose ps --status running | grep -q lecbh-test; then
+            echo "Container is running, proceeding with tests"
+            # Run the test command
+            docker compose exec -T lecbh-test /app/lecbh.sh --dry-run --unattended
+          else
+            echo "Container is not running, checking logs"
+            docker compose logs lecbh-test
+            exit 1
+          fi
+          
+          # Clean up
           docker compose down
