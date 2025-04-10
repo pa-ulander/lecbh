@@ -12,12 +12,25 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
-      - name: Set up Docker
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-        
+      
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-compose-${{ hashFiles('**/Dockerfile', '**/docker-compose.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-docker-compose-
+      
+      - name: Build Docker Compose images with cache
+        run: |
+          # Export buildx cache to Docker
+          docker buildx create --use
+          docker compose build --build-arg BUILDKIT_INLINE_CACHE=1
+      
       - name: Run tests
         run: |
-          # Use docker compose (v2) instead of docker-compose (v1)
           docker compose up -d
           sleep 5
           docker compose exec -T lecbh-test /app/lecbh.sh --dry-run --unattended
