@@ -20,12 +20,32 @@ jobs:
       - name: Make script executable
         run: chmod +x ./lecbh.sh
 
-      - name: Configure hosts file for testing
+      - name: Configure hosts file for testing with valid domain
         run: |
-          # Add example.com to hosts file to make it "reachable"
-          echo "127.0.0.1 example.com" | sudo tee -a /etc/hosts
+          # Use a domain that's valid for Let's Encrypt testing
+          # GitHub Actions runner hostname + .local is a good choice
+          TEST_DOMAIN=$(hostname).local
+          echo "Using test domain: $TEST_DOMAIN"
+          
+          # Add the test domain to hosts file
+          echo "127.0.0.1 $TEST_DOMAIN" | sudo tee -a /etc/hosts
+          
           # Verify it works
-          ping -c 1 example.com
+          ping -c 1 $TEST_DOMAIN
+
+      - name: Create modified script for testing
+        run: |
+          # Create a copy of the script with modified default values
+          TEST_DOMAIN=$(hostname).local
+          cp ./lecbh.sh ./lecbh_test.sh
+          chmod +x ./lecbh_test.sh
+          
+          # Modify the default values in the script
+          sed -i "s/DEFAULT_DOMAINS=\"example.com\"/DEFAULT_DOMAINS=\"$TEST_DOMAIN\"/" ./lecbh_test.sh
+          sed -i "s/DEFAULT_EMAIL=\"admin@example.com\"/DEFAULT_EMAIL=\"test@$TEST_DOMAIN\"/" ./lecbh_test.sh
+          
+          # Verify the changes
+          grep "DEFAULT_" ./lecbh_test.sh
 
       - name: Start Apache and verify it's running
         run: |
@@ -35,7 +55,7 @@ jobs:
           sudo netstat -tulpn | grep apache
 
       - name: Test with Apache
-        run: sudo ./lecbh.sh --dry-run --unattended --verbose
+        run: sudo ./lecbh_test.sh --dry-run --unattended --verbose
 
       - name: Stop Apache, start Nginx and verify it's running
         run: |
@@ -46,4 +66,4 @@ jobs:
           sudo netstat -tulpn | grep nginx
 
       - name: Test with Nginx
-        run: sudo ./lecbh.sh --dry-run --unattended --verbose --server nginx
+        run: sudo ./lecbh_test.sh --dry-run --unattended --verbose --server nginx
