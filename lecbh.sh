@@ -9,7 +9,7 @@ set -e
 # -------------------- CONFIG --------------------
 DEFAULT_EMAIL="admin@example.com"
 DEFAULT_DOMAINS="example.com"
-DEFAULT_SERVER="apache" # Change to nginx if preferred
+DEFAULT_SERVER="apache"       # Change to nginx if preferred
 DEFAULT_INSTALL_METHOD="snap" # Options: snap, pip
 # -------------------------------------------------
 
@@ -92,7 +92,7 @@ if ! command -v certbot >/dev/null 2>&1; then
     if $TEST_MODE; then
         echo "🧪 Test mode: Skipping Certbot installation"
         # Create a mock certbot script for testing
-        cat > /usr/bin/certbot << 'EOF'
+        cat >/usr/bin/certbot <<'EOF'
 #!/bin/bash
 # Mock certbot script for testing
 if [[ "$*" == *"--help"* ]]; then
@@ -113,7 +113,7 @@ EOF
                 echo "❌ snap command not found. Please install snapd first."
                 exit 1
             fi
-            
+
             # Try to install certbot via snap
             snap install core
             snap refresh core
@@ -126,7 +126,7 @@ EOF
                 apt-get update
                 apt-get install -y python3-pip
             fi
-            
+
             # Install certbot and plugins
             pip3 install certbot
             if [[ "$SERVER" == "apache" ]]; then
@@ -134,14 +134,14 @@ EOF
             elif [[ "$SERVER" == "nginx" ]]; then
                 pip3 install certbot-nginx
             fi
-            
+
             # Make sure certbot is in PATH
             ln -sf /usr/local/bin/certbot /usr/bin/certbot
         fi
     fi
 else
     echo "✅ Certbot is already installed."
-    
+
     # Check the installation method of existing certbot
     if [[ -L /snap/bin/certbot ]]; then
         echo "   (Installed via Snap)"
@@ -169,7 +169,7 @@ else
 
     read -p "🖥️ Which web server are you using? (apache/nginx) [default: $DEFAULT_SERVER]: " SERVER
     SERVER=${SERVER:-$DEFAULT_SERVER}
-    
+
     if [[ ! "$INSTALL_METHOD" =~ ^(snap|pip)$ ]]; then
         read -p "🔧 Installation method? (snap/pip) [default: $DEFAULT_INSTALL_METHOD]: " INSTALL_METHOD_INPUT
         INSTALL_METHOD=${INSTALL_METHOD_INPUT:-$DEFAULT_INSTALL_METHOD}
@@ -364,7 +364,10 @@ if ! $DRY_RUN && ! $TEST_MODE; then
         # Pip version uses cron jobs
         if ! crontab -l | grep -q "certbot renew"; then
             echo "⚠️ Setting up automatic renewal via cron..."
-            (crontab -l 2>/dev/null; echo "0 */12 * * * /usr/bin/certbot renew --quiet") | crontab -
+            (
+                crontab -l 2>/dev/null
+                echo "0 */12 * * * /usr/bin/certbot renew --quiet"
+            ) | crontab -
         fi
         echo "✅ Automatic renewal via cron is configured."
     fi
