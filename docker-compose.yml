@@ -4,12 +4,22 @@ services:
   lecbh-test:
     build: .
     container_name: lecbh-test
-    privileged: true # Required for systemd
     volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:ro
       - ./lecbh.sh:/app/lecbh.sh
+      - ./test.sh:/app/test.sh
+      # Add a volume for persisting snap data between container restarts
+      - snap-data:/var/lib/snapd/snap
     ports:
-      - "80:80"
-      - "443:443"
-    # Keep the container running
-    tty: true
+      - "80:80"     # Apache
+      - "8081:8080" # Nginx (changed from 8080:8080 to avoid conflict)
+      - "443:443"   # HTTPS
+    restart: unless-stopped
+    # Add capability to use snapd
+    cap_add:
+      - SYS_ADMIN
+    # Add hostname for easier testing
+    hostname: lecbh-test
+
+volumes:
+  snap-data:
+    # Named volume for snap data persistence
