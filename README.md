@@ -14,6 +14,8 @@
 - Includes dry-run mode for testing without making changes
 - Provides staging mode for development without hitting rate limits
 - Works with unattended mode for automated deployments
+- Supports installation via Snap (default) or pip
+- Includes test mode for Docker/container environments
 
 ## Requirements
 
@@ -51,6 +53,7 @@ The script will prompt you for:
 - Domain name(s) (comma-separated for multiple domains)
 - Email address for Let's Encrypt registration
 - Web server type (Apache or Nginx)
+- Installation method (snap or pip)
 
 ### Command Line Options
 
@@ -63,6 +66,9 @@ Options:
   --verbose      Show more detailed output
   --staging      Use Let's Encrypt staging environment (for testing)
   --help         Show this help message
+  --test-mode    Skip installation for testing in containers
+  --pip          Use pip method for installing certbot
+  --snap         Use snap method for installing certbot (default)
 ```
 
 ### Examples
@@ -87,6 +93,16 @@ Show detailed output:
 sudo ./lecbh.sh --verbose
 ```
 
+Use pip installation method instead of snap:
+```bash
+sudo ./lecbh.sh --pip
+```
+
+Testing in container environments:
+```bash
+sudo ./lecbh.sh --test-mode
+```
+
 ### Default Configuration
 
 You can modify the default values at the top of the script:
@@ -95,13 +111,17 @@ You can modify the default values at the top of the script:
 # -------------------- CONFIG --------------------
 DEFAULT_EMAIL="admin@example.com"
 DEFAULT_DOMAINS="example.com"
-DEFAULT_SERVER="apache" # Change to nginx if preferred
+DEFAULT_SERVER="apache"       # Change to nginx if preferred
+DEFAULT_INSTALL_METHOD="snap" # Options: snap, pip
 # -------------------------------------------------
 ```
 
 ## Certificate Renewal
 
-Let's Encrypt certificates expire every 90 days. The script ensures your system is set up with a systemd timer to renew automatically.
+Let's Encrypt certificates expire every 90 days. The script ensures your system is set up for automatic renewal:
+
+- With snap installation: Sets up systemd timer for automatic renewal
+- With pip installation: Configures a cron job to run every 12 hours
 
 You can test the renewal process with:
 
@@ -109,10 +129,16 @@ You can test the renewal process with:
 sudo certbot renew --dry-run
 ```
 
-To check the status of the renewal timer:
+To check the status of the renewal timer (snap installation):
 
 ```bash
 systemctl status certbot.timer
+```
+
+To check the cron job (pip installation):
+
+```bash
+crontab -l | grep certbot
 ```
 
 ## Development and Testing
@@ -135,6 +161,8 @@ For detailed information about testing procedures and environments, see the [Tes
 
 4. **Rate limits**: If you hit Let's Encrypt rate limits, use the `--staging` flag for testing.
 
+5. **Snap not available**: If snap is not available or preferred, use `--pip` to install via pip instead.
+
 ### Logs
 
 Certbot logs can be found at:
@@ -142,7 +170,7 @@ Certbot logs can be found at:
 
 ## Unlicense
 
-This project is licensed under the UNLICENCE License - see the UNLICENSE file for details.
+This project is licensed under the UNLICENSE License - see the UNLICENSE file for details.
 
 ## Acknowledgments
 
