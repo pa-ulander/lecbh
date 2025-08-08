@@ -1,8 +1,28 @@
 [![Test Status](https://github.com/pa-ulander/lecbh/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/pa-ulander/lecbh/actions/workflows/test.yml)
 
-# lecbh
+# Let's Encrypt Certbot Helper
 
-**lecbh** (Let's Encrypt Certbot Helper) is a lightweight bash script that automates SSL certificate setup using Certbot on Ubuntu servers running Apache or Nginx.
+**Let's Encrypt Certbot Helper** (lecbh) is a lightweight bash script that automates SSL certificate setup using Certbot on Ubuntu servers running Apache or Nginx.
+
+## Table of Contents
+
+- [Let's Encrypt Certbot Helper](#lets-encrypt-certbot-helper)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+  - [Usage](#usage)
+    - [Basic Usage](#basic-usage)
+    - [Command Line Options](#command-line-options)
+    - [Examples](#examples)
+    - [Default Configuration](#default-configuration)
+  - [Certificate Renewal](#certificate-renewal)
+  - [Development and Testing](#development-and-testing)
+  - [Troubleshooting](#troubleshooting)
+    - [Common Issues](#common-issues)
+    - [Logs](#logs)
+  - [Unlicense](#unlicense)
+  - [Acknowledgments](#acknowledgments)
 
 ## Features
 
