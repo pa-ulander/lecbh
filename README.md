@@ -6,23 +6,24 @@
 
 ## Table of Contents
 
-*   [Let's Encrypt Certbot Helper](#lets-encrypt-certbot-helper)
-    *   [Table of Contents](#table-of-contents)
-    *   [Features](#features)
-    *   [Requirements](#requirements)
-    *   [Installation](#installation)
-    *   [Usage](#usage)
-        *   [Basic Usage](#basic-usage)
-        *   [Command Line Options](#command-line-options)
-        *   [Examples](#examples)
-        *   [Default Configuration](#default-configuration)
-    *   [Certificate Renewal](#certificate-renewal)
-    *   [Development and Testing](#development-and-testing)
-    *   [Troubleshooting](#troubleshooting)
-        *   [Common Issues](#common-issues)
-        *   [Logs](#logs)
-    *   [Unlicense](#unlicense)
-    *   [Acknowledgments](#acknowledgments)
+- [Let's Encrypt Certbot Helper](#lets-encrypt-certbot-helper)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+  - [Usage](#usage)
+    - [Basic Usage](#basic-usage)
+    - [Command Line Options](#command-line-options)
+    - [Examples](#examples)
+    - [Default Configuration](#default-configuration)
+  - [Certificate Renewal](#certificate-renewal)
+  - [Development and Testing](#development-and-testing)
+  - [Troubleshooting](#troubleshooting)
+    - [Common Issues](#common-issues)
+    - [Logs](#logs)
+    - [Contributing](#contributing)
+  - [Unlicense](#unlicense)
+  - [Acknowledgments](#acknowledgments)
 
 ## Features
 
@@ -195,6 +196,9 @@ For detailed information about testing procedures and environments, see the [Tes
 Certbot logs can be found at:
 
 *   `/var/log/letsencrypt/letsencrypt.log`
+
+### Contributing
+If you find any problems or have suggestions about this script, please submit an issue. Moreover, any pull request, code review and feedback are welcome.
 
 ## Unlicense
 
