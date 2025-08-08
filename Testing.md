@@ -1,4 +1,4 @@
-# Testing lecbh with Docker
+# Testing Let's Encrypt Certbot Helper (lecbh) with Docker
 
 This document explains how to set up a testing environment for the `lecbh` script using Docker, which allows you to safely test the script without affecting your production systems.
 
