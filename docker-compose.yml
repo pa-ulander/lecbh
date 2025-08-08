@@ -10,9 +10,9 @@ services:
       # Add a volume for persisting snap data between container restarts
       - snap-data:/var/lib/snapd/snap
     ports:
-      - "80:80" # Apache
+      - "8082:80" # Apache (changed to avoid host port conflict)
       - "8081:8080" # Nginx (changed from 8080:8080 to avoid conflict)
-      - "443:443" # HTTPS
+      - "8443:443" # HTTPS (changed from 443:443 to avoid host port conflict)
     restart: unless-stopped
     # Add capability to use snapd
     cap_add:
