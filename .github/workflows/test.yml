@@ -13,96 +13,34 @@ jobs:
       - uses: actions/checkout@v3
 
       # We'll use a simpler approach - just cache the installed packages status
-      - name: Cache installed packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/pip
-            ${{ github.workspace }}/.installed-packages
-          key: ${{ runner.os }}-packages-${{ hashFiles('**/test.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-packages-
-
-      - name: Install dependencies
+      - name: Install dependencies (web servers + tools only)
         run: |
-          # Check if we've already installed the packages
-          if [ ! -f "${{ github.workspace }}/.installed-packages" ]; then
-            sudo apt-get update
-            # Use --no-install-recommends to minimize installation size
-            sudo apt-get install -y --no-install-recommends apache2 nginx certbot python3-certbot-apache python3-certbot-nginx netcat-openbsd
-            # Create a marker file with timestamp to indicate packages are installed
-            date > "${{ github.workspace }}/.installed-packages"
-          else
-            echo "Using cached packages. Installed on: $(cat ${{ github.workspace }}/.installed-packages)"
-          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apache2 nginx netcat-openbsd
 
       - name: Make script executable
         run: chmod +x ./lecbh.sh
 
       - name: Configure hosts file for testing with valid domain
         run: |
-          # Use a domain with a valid TLD for Let's Encrypt testing
           TEST_DOMAIN="test-$(date +%s).example.org"
           echo "Using test domain: $TEST_DOMAIN"
-
-          # Add the test domain to hosts file
           echo "127.0.0.1 $TEST_DOMAIN" | sudo tee -a /etc/hosts
-
-          # Verify it works
           ping -c 1 $TEST_DOMAIN
+          echo "TEST_DOMAIN=$TEST_DOMAIN" >> $GITHUB_ENV
 
-      - name: Create modified script for testing
+      - name: Test with Apache (mock certbot)
         run: |
-          # Create a copy of the script with modified default values
-          TEST_DOMAIN="test-$(date +%s).example.org"
-          cp ./lecbh.sh ./lecbh_test.sh
-          chmod +x ./lecbh_test.sh
+          sudo ./lecbh.sh --dry-run --unattended --test-mode --verbose \
+            --server=apache --domains="$TEST_DOMAIN" --email="admin@$TEST_DOMAIN"
 
-          # Modify the default values in the script
-          sed -i "s/DEFAULT_DOMAINS=\"example.com\"/DEFAULT_DOMAINS=\"$TEST_DOMAIN\"/" ./lecbh_test.sh
-          sed -i "s/DEFAULT_EMAIL=\"admin@example.com\"/DEFAULT_EMAIL=\"admin@$TEST_DOMAIN\"/" ./lecbh_test.sh
-
-          # Add support for --server command-line option
-          sed -i '/--staging) STAGING=true ;;/a \ \ \ \ --server=*) SERVER_CLI="${1#*=}" ;;' ./lecbh_test.sh
-
-          # Modify the unattended mode section to use SERVER_CLI if provided
-          sed -i '/if \$UNATTENDED; then/,/else/c\
-          if \$UNATTENDED; then\
-              DOMAIN_INPUT=\$DEFAULT_DOMAINS\
-              EMAIL=\$DEFAULT_EMAIL\
-              SERVER=\${SERVER_CLI:-\$DEFAULT_SERVER}\
-              echo "🤖 Running in unattended mode with default values:"\
-              echo "   Domains: \$DOMAIN_INPUT"\
-              echo "   Email: \$EMAIL"\
-              echo "   Server: \$SERVER"\
-          else' ./lecbh_test.sh
-
-          # Add a special flag to bypass the actual certificate issuance in dry-run mode
-          # This will make the script exit with success after the command is displayed
-          sed -i '/echo "🚀 Running: \$CERTBOT_CMD"/a if $DRY_RUN; then echo "✅ Dry run mode: Command would be executed here."; echo "✅ Certificate request successful!"; exit 0; fi' ./lecbh_test.sh
-
-          # Verify the changes
-          grep "DEFAULT_" ./lecbh_test.sh
-          grep "SERVER_CLI" ./lecbh_test.sh
-          grep "Dry run mode: Command would be executed here" ./lecbh_test.sh
-
-      - name: Start Apache and verify it's running
+      - name: Switch to Nginx
         run: |
-          sudo systemctl start apache2
-          sudo systemctl status apache2
-          # Ensure Apache is actually running
-          sudo netstat -tulpn | grep apache
-
-      - name: Test with Apache
-        run: sudo ./lecbh_test.sh --dry-run --unattended --verbose
-
-      - name: Stop Apache, start Nginx and verify it's running
-        run: |
-          sudo systemctl stop apache2
+          sudo systemctl stop apache2 || true
           sudo systemctl start nginx
-          sudo systemctl status nginx
-          # Ensure Nginx is actually running
-          sudo netstat -tulpn | grep nginx
+          sudo systemctl status nginx --no-pager
 
-      - name: Test with Nginx
-        run: sudo ./lecbh_test.sh --dry-run --unattended --verbose --server=nginx
+      - name: Test with Nginx (mock certbot)
+        run: |
+          sudo ./lecbh.sh --dry-run --unattended --test-mode --verbose \
+            --server=nginx --domains="$TEST_DOMAIN" --email="admin@$TEST_DOMAIN"
