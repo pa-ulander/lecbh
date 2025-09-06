@@ -42,14 +42,16 @@ This will:
 3.  Report the results
 4.  Clean up the container
 
-The test script includes tests for:
+The test script covers:
 
-*   Basic help command
-*   Dry run with Apache and Nginx
-*   Verbose output
-*   Staging environment
-*   Multiple domains
-*   Both pip and snap installation methods
+*   Help command
+*   Dry run (Apache & Nginx) using explicit `--server=` flag
+*   Verbose mode
+*   Staging mode
+*   Multiple domains via `--domains`
+*   Pip & snap installation selectors
+*   Test mode (mock certbot)
+*   JSON output mode (can be added with `--json`)
 
 ## Manual Testing
 
@@ -71,10 +73,11 @@ docker-compose exec lecbh-test bash
 
 ```
 ./lecbh.sh --help
-./lecbh.sh --dry-run
-./lecbh.sh --dry-run --verbose
-./lecbh.sh --staging --unattended
-./lecbh.sh --test-mode --pip
+./lecbh.sh --dry-run --server=apache
+./lecbh.sh --dry-run --verbose --server=nginx
+./lecbh.sh --staging --unattended --server=apache
+./lecbh.sh --test-mode --pip --dry-run --server=nginx
+./lecbh.sh --dry-run --json --unattended --domains=example.com,www.example.com
 ```
 
 ### 4\. Clean up when done
@@ -108,11 +111,10 @@ The project includes a GitHub Actions workflow configuration in `.github/workflo
 
 The workflow:
 
-1.  Sets up an Ubuntu environment with Apache and Nginx
-2.  Uses caching to speed up subsequent test runs
-3.  Creates a test domain in the hosts file
-4.  Modifies the script for testing with a special exit path for dry-run mode
-5.  Tests with both Apache and Nginx servers
+1.  Installs Apache & Nginx
+2.  Creates a temporary host-mapped test domain
+3.  Runs lecbh in mock (`--test-mode`) dry-run for Apache, then Nginx
+4.  Verifies exit codes
 
 To see the test results, visit the Actions tab in the GitHub repository.
 
@@ -144,9 +146,8 @@ sudo ./lecbh.sh --dry-run --unattended --verbose --server=nginx
 
 **Snap not working in container**:
 
-*   Snap has limitations in containers. The test script expects snap tests to fail in Docker.
-*   Use `--test-mode` flag for container environments
-*   Use `--pip` for a more reliable installation method in containers
+*   Snap has limitations in many container runtimes
+*   Prefer `--test-mode` or `--pip` inside ephemeral containers
 
 **DNS resolution issues**:
 
