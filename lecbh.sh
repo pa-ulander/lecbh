@@ -1,409 +1,415 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # lecbh - Let's Encrypt Certbot Helper for Apache/Nginx on Ubuntu
 # https://github.com/pa-ulander/lecbh
 # Version: 1.1.0
 
-set -e
+set -euo pipefail
+IFS=$'\n\t'
+LOCK_FILE="${LECBH_LOCK_FILE:-/var/run/lecbh.lock}"
+JSON_MODE=false
 
-# -------------------- CONFIG --------------------
-DEFAULT_EMAIL="admin@example.com"
-DEFAULT_DOMAINS="example.com"
-DEFAULT_SERVER="apache"       # Change to nginx if preferred
-DEFAULT_INSTALL_METHOD="snap" # Options: snap, pip
-# -------------------------------------------------
+cleanup() {
+    local ec=$?
+    # Remove lock if owned by this PID
+    if [[ -f "$LOCK_FILE" ]] && grep -q "^PID=$$" "$LOCK_FILE" 2>/dev/null; then
+        rm -f "$LOCK_FILE" || true
+    fi
+    if [[ $ec -ne 0 ]]; then
+        echo "❌ Error at line $LINENO (exit $ec)" >&2
+    fi
+}
+
+trap cleanup EXIT ERR INT TERM
+
+# -------------------- DEFAULT CONFIG (env overrides allowed) --------------------
+: "${DEFAULT_EMAIL:=admin@example.com}"
+: "${DEFAULT_DOMAINS:=example.com}"
+: "${DEFAULT_SERVER:=apache}"
+: "${DEFAULT_INSTALL_METHOD:=snap}" # snap | pip
+: "${LECBH_NO_COLOR:=0}" # set to 1 to disable emojis/colors
+# --------------------------------------------------------------------------------
 
 DRY_RUN=false
 UNATTENDED=false
 VERBOSE=false
 STAGING=false
 TEST_MODE=false
-INSTALL_METHOD=$DEFAULT_INSTALL_METHOD
+QUIET=false
+NO_REDIRECT=false
+INSTALL_METHOD="$DEFAULT_INSTALL_METHOD"
 
-# ---------- Parse Flags ----------
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-    --dry-run) DRY_RUN=true ;;
-    --unattended) UNATTENDED=true ;;
-    --verbose) VERBOSE=true ;;
-    --staging) STAGING=true ;;
-    --test-mode) TEST_MODE=true ;; # New flag for testing
-    --pip) INSTALL_METHOD="pip" ;;
-    --snap) INSTALL_METHOD="snap" ;;
-    --help)
-        echo "Usage: sudo ./lecbh.sh [OPTIONS]"
-        echo ""
-        echo "Options:"
-        echo "  --dry-run      Test run without making actual changes"
-        echo "  --unattended   Run with default values without prompting"
-        echo "  --verbose      Show more detailed output"
-        echo "  --staging      Use Let's Encrypt staging environment (for testing)"
-        echo "  --help         Show this help message"
-        echo "  --test-mode    Skip installation for testing in containers"
-        echo "  --pip          Use pip method for installing certbot"
-        echo "  --snap         Use snap method for installing certbot (default)"
-        exit 0
-        ;;
-    *)
-        echo "❌ Unknown option: $1"
-        echo "Run with --help for usage information"
-        exit 1
-        ;;
-    esac
-    shift
-done
+SERVER=""
+EMAIL_OVERRIDE=""
+DOMAINS_OVERRIDE=""
 
-# Function for verbose logging
-log() {
-    if $VERBOSE; then
-        echo "🔍 $1"
+COLOR_OK="✅"; COLOR_WARN="⚠️"; COLOR_ERR="❌"; COLOR_INFO="🔍"; COLOR_KEY="🔐"
+if [[ "$LECBH_NO_COLOR" == "1" ]]; then
+    COLOR_OK="[OK]"; COLOR_WARN="[WARN]"; COLOR_ERR="[ERR]"; COLOR_INFO="[INFO]"; COLOR_KEY="[LECBH]"
+fi
+
+usage() {
+    cat <<EOF
+Usage: sudo ./lecbh.sh [OPTIONS]
+
+Options:
+    --dry-run                Use certbot --dry-run (no real certs)
+    --unattended             Non-interactive: use defaults or provided flags
+    --verbose                Verbose logging
+    --quiet                  Minimal output (overrides verbose)
+    --staging                Use Let's Encrypt staging environment
+    --test-mode              Do not install real certbot; use mock (CI/testing)
+    --pip                    Force pip install method
+    --snap                   Force snap install method (default)
+    --server=apache|nginx    Web server type (overrides DEFAULT_SERVER)
+    --email=ADDR             Email address (overrides DEFAULT_EMAIL)
+    --domains=a.com,b.com    Comma separated domain list
+    --no-redirect            Do not force HTTP->HTTPS redirect
+    --json                   Output machine-readable JSON summary (implies quiet except errors)
+    --help                   Show this help and exit
+
+Examples:
+    sudo ./lecbh.sh --unattended --server=nginx \\
+             --domains=example.org,www.example.org --email=admin@example.org
+    sudo ./lecbh.sh --dry-run --staging --unattended
+EOF
+}
+
+log() { if $VERBOSE && ! $QUIET; then echo "${COLOR_INFO} $*" >&2; fi; return 0; }
+info() { if ! $QUIET; then echo "$*" >&2; fi; return 0; }
+warn() { echo "${COLOR_WARN} $*" >&2; return 0; }
+die() { echo "${COLOR_ERR} $*" >&2; exit 1; }
+
+parse_flags() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --dry-run) DRY_RUN=true ;;
+            --unattended) UNATTENDED=true ;;
+            --verbose) VERBOSE=true ;;
+            --quiet) QUIET=true ; VERBOSE=false ;;
+            --staging) STAGING=true ;;
+            --test-mode) TEST_MODE=true ;;
+            --pip) INSTALL_METHOD="pip" ;;
+            --snap) INSTALL_METHOD="snap" ;;
+            --server=*) SERVER="${1#*=}" ;;
+            --email=*) EMAIL_OVERRIDE="${1#*=}" ;;
+            --domains=*) DOMAINS_OVERRIDE="${1#*=}" ;;
+            --no-redirect) NO_REDIRECT=true ;;
+            --json) JSON_MODE=true ; QUIET=true ; VERBOSE=false ;;
+            --help) usage; exit 0 ;;
+            *) die "Unknown option: $1 (use --help)" ;;
+        esac
+        shift
+    done
+}
+
+validate_email() { [[ $1 =~ ^[^@]+@[^@]+\.[^@]+$ ]] || die "Invalid email: $1"; }
+validate_domain() { [[ $1 =~ ^([A-Za-z0-9*-]+\.)+[A-Za-z]{2,}$ ]] || die "Invalid domain: $1"; }
+
+resolve_domain() {
+    local d=$1
+    if getent ahosts "$d" >/dev/null 2>&1; then
+        log "Resolved $d"
+        return 0
+    else
+        warn "Could not resolve domain $d"
+        return 1
     fi
 }
 
-echo "🔐 lecbh - Let's Encrypt Certbot Helper"
-echo "----------------------------------------"
+ensure_root() { [[ $EUID -eq 0 ]] || die "Please run as root (sudo)."; }
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    echo "❌ Please run this script as root (sudo)."
-    exit 1
+ensure_prereqs() {
+    command -v nc >/dev/null 2>&1 || { info "Installing netcat-openbsd"; apt-get update -y && apt-get install -y netcat-openbsd >/dev/null 2>&1; }
+}
+
+prepare_mock_certbot() {
+    local mock_dir="/tmp/lecbh-mock"
+    mkdir -p "$mock_dir"
+    cat >"$mock_dir/certbot" <<'MOCK'
+#!/usr/bin/env bash
+echo "[lecbh mock certbot] $*"
+if [[ "$*" == *"certificates"* ]]; then
+    echo "No certificates found (mock)."
 fi
+exit 0
+MOCK
+    chmod +x "$mock_dir/certbot"
+    export PATH="$mock_dir:$PATH"
+    log "Using mock certbot in test mode"
+}
 
-# Check Ubuntu version
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    if [[ "$ID" != "ubuntu" ]]; then
-        echo "⚠️ This script is designed for Ubuntu. You're running: $PRETTY_NAME"
-        read -p "Continue anyway? (y/n): " choice
-        [[ "$choice" != "y" ]] && exit 1
-    else
-        log "Running on $PRETTY_NAME"
-    fi
-fi
-
-# Check for required tools
-if ! command -v nc >/dev/null 2>&1; then
-    echo "📦 Installing netcat for network checks..."
-    apt-get update && apt-get install -y netcat-openbsd
-fi
-
-# Install Certbot if needed
-if ! command -v certbot >/dev/null 2>&1; then
+install_certbot() {
     if $TEST_MODE; then
-        echo "🧪 Test mode: Skipping Certbot installation"
-        # Create a mock certbot script for testing
-        cat >/usr/bin/certbot <<'EOF'
-#!/bin/bash
-# Mock certbot script for testing
-if [[ "$*" == *"--help"* ]]; then
-    echo "Mock certbot help output"
-elif [[ "$*" == *"certificates"* ]]; then
-    echo "No certificates found."
-else
-    echo "Mock certbot execution: $*"
-fi
-EOF
-        chmod +x /usr/bin/certbot
-        echo "✅ Created mock certbot for testing."
-    else
-        if [[ "$INSTALL_METHOD" == "snap" ]]; then
-            echo "📦 Installing Certbot via Snap..."
-            # Check if snapd is running
-            if ! command -v snap >/dev/null 2>&1; then
-                echo "❌ snap command not found. Please install snapd first."
-                exit 1
-            fi
-
-            # Try to install certbot via snap
-            snap install core
-            snap refresh core
-            snap install --classic certbot
-            ln -sf /snap/bin/certbot /usr/bin/certbot
-        elif [[ "$INSTALL_METHOD" == "pip" ]]; then
-            echo "📦 Installing Certbot via Pip..."
-            # Install pip if not present
-            if ! command -v pip3 >/dev/null 2>&1; then
-                apt-get update
-                apt-get install -y python3-pip
-            fi
-
-            # Install certbot and plugins
-            pip3 install certbot
-            if [[ "$SERVER" == "apache" ]]; then
-                pip3 install certbot-apache
-            elif [[ "$SERVER" == "nginx" ]]; then
-                pip3 install certbot-nginx
-            fi
-
-            # Make sure certbot is in PATH
-            ln -sf /usr/local/bin/certbot /usr/bin/certbot
-        fi
-    fi
-else
-    echo "✅ Certbot is already installed."
-
-    # Check the installation method of existing certbot
-    if [[ -L /snap/bin/certbot ]]; then
-        echo "   (Installed via Snap)"
-    elif [[ -f /usr/local/bin/certbot ]]; then
-        echo "   (Installed via Pip)"
-    fi
-fi
-
-# Collect input
-if $UNATTENDED; then
-    DOMAIN_INPUT=$DEFAULT_DOMAINS
-    EMAIL=$DEFAULT_EMAIL
-    SERVER=$DEFAULT_SERVER
-    echo "🤖 Running in unattended mode with default values:"
-    echo "   Domains: $DOMAIN_INPUT"
-    echo "   Email: $EMAIL"
-    echo "   Server: $SERVER"
-    echo "   Install method: $INSTALL_METHOD"
-else
-    read -p "🌐 Enter domain(s), comma-separated (e.g., example.com,www.example.com): " DOMAIN_INPUT
-    DOMAIN_INPUT=${DOMAIN_INPUT:-$DEFAULT_DOMAINS}
-
-    read -p "📧 Enter email for Let's Encrypt registration: " EMAIL
-    EMAIL=${EMAIL:-$DEFAULT_EMAIL}
-
-    read -p "🖥️ Which web server are you using? (apache/nginx) [default: $DEFAULT_SERVER]: " SERVER
-    SERVER=${SERVER:-$DEFAULT_SERVER}
-
-    if [[ ! "$INSTALL_METHOD" =~ ^(snap|pip)$ ]]; then
-        read -p "🔧 Installation method? (snap/pip) [default: $DEFAULT_INSTALL_METHOD]: " INSTALL_METHOD_INPUT
-        INSTALL_METHOD=${INSTALL_METHOD_INPUT:-$DEFAULT_INSTALL_METHOD}
-    fi
-fi
-
-# Prepare domain flags
-IFS=',' read -ra DOMAINS <<<"$DOMAIN_INPUT"
-DOMAIN_ARGS=""
-for domain in "${DOMAINS[@]}"; do
-    domain=$(echo "$domain" | xargs) # Trim whitespace
-    DOMAIN_ARGS+=" -d $domain"
-    log "Added domain: $domain"
-done
-
-# Optional DNS reachability check
-MAIN_DOMAIN="${DOMAINS[0]}"
-echo "🔍 Checking if domain $MAIN_DOMAIN is reachable..."
-if ! ping -c 1 "$MAIN_DOMAIN" &>/dev/null; then
-    echo "⚠️ Warning: Domain $MAIN_DOMAIN doesn't seem reachable."
-    echo "   This could indicate DNS is not properly configured."
-    echo "   Make sure the domain points to this server's IP address."
-
-    if ! $UNATTENDED; then
-        read -p "Continue anyway? (y/n): " choice
-        [[ "$choice" != "y" ]] && exit 1
-    else
-        echo "   Continuing anyway (unattended mode)."
-    fi
-else
-    echo "✅ Domain $MAIN_DOMAIN is reachable."
-fi
-
-# Web server check
-if [[ "$SERVER" == "apache" ]]; then
-    if $TEST_MODE; then
-        # In test mode, just check if the package is installed
-        if ! command -v apache2 >/dev/null 2>&1; then
-            echo "❌ Apache is not installed."
-            exit 1
-        fi
-        CERTBOT_PLUGIN="--apache"
-        echo "✅ Apache is installed (test mode)."
-    else
-        # First try systemctl, if that fails, try ps
-        if ! systemctl is-active --quiet apache2 2>/dev/null; then
-            # systemctl failed, try checking process list
-            if ! pgrep -x "apache2" >/dev/null || ! nc -z localhost 80 >/dev/null 2>&1; then
-                echo "❌ Apache is not running or not installed."
-                echo "   Please install and start Apache first:"
-                echo "   sudo apt update && sudo apt install apache2 && sudo systemctl start apache2"
-                # In Docker, suggest using service command instead
-                echo "   Or in a container: service apache2 start"
-                exit 1
-            fi
-        fi
-        CERTBOT_PLUGIN="--apache"
-        echo "✅ Apache is running."
-    fi
-elif [[ "$SERVER" == "nginx" ]]; then
-    if $TEST_MODE; then
-        # In test mode, just check if the package is installed
-        if ! command -v nginx >/dev/null 2>&1; then
-            echo "❌ Nginx is not installed."
-            exit 1
-        fi
-        CERTBOT_PLUGIN="--nginx"
-        echo "✅ Nginx is installed (test mode)."
-    else
-        # First try systemctl, if that fails, try ps
-        if ! systemctl is-active --quiet nginx 2>/dev/null; then
-            # systemctl failed, try checking process list
-            if ! pgrep -x "nginx" >/dev/null || ! (nc -z localhost 80 >/dev/null 2>&1 || nc -z localhost 8080 >/dev/null 2>&1); then
-                echo "❌ Nginx is not running or not installed."
-                echo "   Please install and start Nginx first:"
-                echo "   sudo apt update && sudo apt install nginx && sudo systemctl start nginx"
-                # In Docker, suggest using service command instead
-                echo "   Or in a container: service nginx start"
-                exit 1
-            fi
-        fi
-        CERTBOT_PLUGIN="--nginx"
-        echo "✅ Nginx is running."
-    fi
-else
-    echo "❌ Unsupported server: $SERVER"
-    echo "   This script supports 'apache' or 'nginx'."
-    exit 1
-fi
-
-# Check if port 80 is open
-echo "🔍 Checking if port 80 is accessible..."
-if ! nc -z localhost 80 >/dev/null 2>&1; then
-    echo "⚠️ Warning: Port 80 doesn't seem to be accessible locally."
-    echo "   Let's Encrypt requires port 80 for domain validation."
-
-    if ! $UNATTENDED; then
-        read -p "Continue anyway? (y/n): " choice
-        [[ "$choice" != "y" ]] && exit 1
-    else
-        echo "   Continuing anyway (unattended mode)."
-    fi
-else
-    echo "✅ Port 80 is accessible."
-fi
-
-# Check if port 443 is open (for HTTPS after setup)
-echo "🔍 Checking if port 443 is accessible..."
-if ! nc -z localhost 443 >/dev/null 2>&1; then
-    echo "⚠️ Warning: Port 443 doesn't seem to be accessible locally."
-    echo "   HTTPS requires port 443 to be open."
-
-    if ! $UNATTENDED; then
-        read -p "Continue anyway? (y/n): " choice
-        [[ "$choice" != "y" ]] && exit 1
-    else
-        echo "   Continuing anyway (unattended mode)."
-    fi
-else
-    echo "✅ Port 443 is accessible."
-fi
-
-# Test mode can skip some additional checks
-if $TEST_MODE; then
-    echo "🧪 Test mode: Skipping remaining checks and using mock certbot..."
-fi
-
-# Check for existing certificates (skip in test mode)
-if ! $DRY_RUN && ! $STAGING && ! $TEST_MODE; then
-    for domain in "${DOMAINS[@]}"; do
-        if certbot certificates | grep -q "$domain"; then
-            echo "⚠️ Certificate for $domain already exists."
-            if ! $UNATTENDED; then
-                read -p "Do you want to renew/replace it? (y/n): " choice
-                [[ "$choice" != "y" ]] && exit 0
+        if [[ "${LECBH_TEST_INSTALL:-0}" == "1" ]]; then
+            # Perform real install only once per method to exercise installer path
+            local marker="/var/lib/lecbh_real_install_${INSTALL_METHOD}"
+            if [[ ! -f $marker ]]; then
+                log "Test mode (install): performing one-time real install for method=${INSTALL_METHOD}"
+                command -v certbot >/dev/null 2>&1 || {
+                    case $INSTALL_METHOD in
+                        snap)
+                            command -v snap >/dev/null 2>&1 || die "snap command not found; install snapd or use --pip"
+                            info "📦 Installing certbot via snap..."
+                            snap install core >/dev/null 2>&1 || true
+                            snap refresh core >/dev/null 2>&1 || true
+                            snap install --classic certbot >/dev/null 2>&1 || die "Failed snap install of certbot"
+                            ln -sf /snap/bin/certbot /usr/bin/certbot
+                            ;;
+                        pip)
+                            info "📦 Installing certbot via pip..."
+                            command -v pip3 >/dev/null 2>&1 || { apt-get update -y && apt-get install -y python3-pip >/dev/null 2>&1; }
+                            if [[ ! -f /var/lib/lecbh_pip_deps_installed ]]; then
+                                mkdir -p /var/lib || true
+                                (apt-get update -y && apt-get install -y --no-install-recommends \
+                                    build-essential gcc python3-dev libssl-dev libffi-dev \
+                                    libaugeas0 libaugeas-dev augeas-tools >/dev/null 2>&1 && \
+                                    touch /var/lib/lecbh_pip_deps_installed) || warn "Failed to install some build dependencies for pip method"
+                            fi
+                            pip3 install --quiet certbot || die "Failed to install certbot via pip"
+                            pip3 install --quiet certbot-apache certbot-nginx || warn "Failed to install one or more certbot plugins"
+                            ln -sf /usr/local/bin/certbot /usr/bin/certbot || true
+                            ;;
+                        *) die "Unknown INSTALL_METHOD: $INSTALL_METHOD" ;;
+                    esac
+                }
+                touch "$marker" || true
             else
-                echo "   Continuing with renewal/replacement (unattended mode)."
+                log "Test mode (install): real install already performed (${INSTALL_METHOD})"
             fi
+            # Always overlay mock after ensuring real install once
+            prepare_mock_certbot
+            return 0
+        else
+            info "${COLOR_INFO} Test mode: forcing mock certbot"
+            prepare_mock_certbot
+            return 0
         fi
-    done
-fi
+    fi
+    # Normal (non-test) path
+    if command -v certbot >/dev/null 2>&1; then
+        log "Certbot already present"
+        return 0
+    fi
+    case $INSTALL_METHOD in
+        snap)
+            command -v snap >/dev/null 2>&1 || die "snap command not found; install snapd or use --pip"
+            info "📦 Installing certbot via snap..."
+            snap install core >/dev/null 2>&1 || true
+            snap refresh core >/dev/null 2>&1 || true
+            snap install --classic certbot >/dev/null 2>&1 || die "Failed snap install of certbot"
+            ln -sf /snap/bin/certbot /usr/bin/certbot
+            ;;
+        pip)
+            info "📦 Installing certbot via pip..."
+            command -v pip3 >/dev/null 2>&1 || { apt-get update -y && apt-get install -y python3-pip >/dev/null 2>&1; }
+            if [[ ! -f /var/lib/lecbh_pip_deps_installed ]]; then
+                mkdir -p /var/lib || true
+                (apt-get update -y && apt-get install -y --no-install-recommends \
+                    build-essential gcc python3-dev libssl-dev libffi-dev \
+                    libaugeas0 libaugeas-dev augeas-tools >/dev/null 2>&1 && \
+                    touch /var/lib/lecbh_pip_deps_installed) || warn "Failed to install some build dependencies for pip method"
+            fi
+            pip3 install --quiet certbot || die "Failed to install certbot via pip"
+            if [[ $SERVER == apache ]]; then
+                pip3 install --quiet certbot-apache || warn "Failed to install certbot-apache plugin"
+            elif [[ $SERVER == nginx ]]; then
+                pip3 install --quiet certbot-nginx || warn "Failed to install certbot-nginx plugin"
+            fi
+            ln -sf /usr/local/bin/certbot /usr/bin/certbot || true
+            ;;
+        *) die "Unknown INSTALL_METHOD: $INSTALL_METHOD" ;;
+    esac
+}
 
-# Build certbot command
-if $DRY_RUN; then
-    echo "🧪 Running in dry-run mode (no changes will be made)."
-    CERTBOT_CMD="certbot certonly $CERTBOT_PLUGIN $DOMAIN_ARGS --email $EMAIL --agree-tos --redirect --non-interactive --dry-run"
-else
-    CERTBOT_CMD="certbot $CERTBOT_PLUGIN $DOMAIN_ARGS --email $EMAIL --agree-tos --redirect --non-interactive"
-fi
+ensure_server_running() {
+    local server=$1
+    case $server in
+        apache)
+            command -v apache2 >/dev/null 2>&1 || die "Apache not installed"
+            if ! pgrep -x apache2 >/dev/null 2>&1; then
+                service apache2 start >/dev/null 2>&1 || true
+            fi
+            pgrep -x apache2 >/dev/null 2>&1 || warn "Apache process not detected (continuing)"
+            CERTBOT_PLUGIN="--apache"
+            ;;
+        nginx)
+            command -v nginx >/dev/null 2>&1 || die "Nginx not installed"
+            if ! pgrep -x nginx >/dev/null 2>&1; then
+                service nginx start >/dev/null 2>&1 || true
+            fi
+            pgrep -x nginx >/dev/null 2>&1 || warn "Nginx process not detected (continuing)"
+            CERTBOT_PLUGIN="--nginx"
+            ;;
+        *) die "Unsupported server: $server" ;;
+    esac
+}
 
-# Add staging flag if enabled
-if $STAGING; then
-    echo "🧪 Using Let's Encrypt staging environment."
-    CERTBOT_CMD+=" --staging"
-fi
+check_ports() {
+    local missing=false
+    # Temporarily disable errexit for port probing
+    set +e
+    nc -z localhost 80 >/dev/null 2>&1
+    local p80=$?
+    nc -z localhost 443 >/dev/null 2>&1
+    local p443=$?
+    set -e
+    if [[ $p80 -ne 0 ]]; then
+        warn "Port 80 not open"; missing=true
+    fi
+    if [[ $p443 -ne 0 ]]; then
+        warn "Port 443 not open (expected after issuance)"
+    fi
+    if $missing && ! $UNATTENDED; then
+        read -r -p "Continue despite port 80 closed? (y/N): " c
+        [[ ${c:-n} == y ]] || die "Aborted by user"
+    fi
+    return 0
+}
 
-# Execute certbot
-echo "🚀 Running: $CERTBOT_CMD"
-if $VERBOSE; then
-    eval $CERTBOT_CMD
-else
-    eval $CERTBOT_CMD >/dev/null 2>&1 && echo "✅ Certificate request successful!" || {
-        echo "❌ Certificate request failed!"
-        exit 1
-    }
-fi
+check_existing_certs() {
+    $DRY_RUN || $STAGING || $TEST_MODE || return 0
+    return 0 # logic skipped in dry-run/staging/test modes intentionally
+}
 
-# Renewal test (skip in test mode)
-if ! $DRY_RUN && ! $TEST_MODE; then
-    echo "🔄 Testing auto-renewal..."
-    if $VERBOSE; then
-        certbot renew --dry-run
-    else
-        certbot renew --dry-run >/dev/null 2>&1 && echo "✅ Renewal test successful!" || {
-            echo "❌ Renewal test failed!"
-            exit 1
+build_certbot_args() {
+    CERTBOT_ARGS=(certbot certonly)
+    CERTBOT_ARGS+=("$CERTBOT_PLUGIN")
+    for d in "${DOMAINS[@]}"; do CERTBOT_ARGS+=( -d "$d" ); done
+    CERTBOT_ARGS+=( --email "$EMAIL" --agree-tos --non-interactive )
+    if $DRY_RUN; then CERTBOT_ARGS+=( --dry-run ); fi
+    if $STAGING; then CERTBOT_ARGS+=( --staging ); fi
+    if ! $NO_REDIRECT; then CERTBOT_ARGS+=( --redirect ); fi
+}
+
+run_certbot() {
+    info "🚀 Running: ${CERTBOT_ARGS[*]}"
+    ${CERTBOT_ARGS[@]} || die "Certbot command failed"
+    $DRY_RUN && info "${COLOR_OK} Dry run completed" || info "${COLOR_OK} Certificate request successful"
+}
+
+test_renewal() {
+    ($DRY_RUN || $TEST_MODE) && return 0
+    info "🔄 Testing renewal (dry-run)"
+    certbot renew --dry-run >/dev/null 2>&1 || warn "Renewal dry-run failed"
+    if [[ $INSTALL_METHOD == snap ]]; then
+        systemctl is-active --quiet certbot.timer 2>/dev/null && log "certbot.timer active" || warn "certbot.timer not active"
+    elif [[ $INSTALL_METHOD == pip ]]; then
+        crontab -l 2>/dev/null | grep -q 'certbot renew' || {
+            (crontab -l 2>/dev/null; echo "0 */12 * * * /usr/bin/certbot renew --quiet") | crontab -
+            log "Installed cron renewal"
         }
     fi
+}
 
-    # Check renewal service
-    if [[ "$INSTALL_METHOD" == "snap" ]]; then
-        # Snap version uses systemd timers
-        if systemctl is-active --quiet certbot.timer; then
-            echo "✅ Automatic renewal service is active."
-        else
-            echo "⚠️ Warning: Automatic renewal service doesn't seem to be active."
-            echo "   Setting up systemd timer for automatic renewal..."
-            systemctl enable certbot.timer
-            systemctl start certbot.timer
-        fi
-    elif [[ "$INSTALL_METHOD" == "pip" ]]; then
-        # Pip version uses cron jobs
-        if ! crontab -l | grep -q "certbot renew"; then
-            echo "⚠️ Setting up automatic renewal via cron..."
-            (
-                crontab -l 2>/dev/null
-                echo "0 */12 * * * /usr/bin/certbot renew --quiet"
-            ) | crontab -
-        fi
-        echo "✅ Automatic renewal via cron is configured."
+final_report() {
+    if $TEST_MODE; then
+        info "🧪 Test mode complete (no real certificates)"; return
     fi
-fi
+    if $DRY_RUN; then
+        info "🧪 Dry-run finished (no real certificates)"; return
+    fi
+    if $STAGING; then
+        info "🧪 Staging certificates issued (not browser-trusted)"; return
+    fi
+    info "🔒 Your site should now be accessible via HTTPS."
+}
 
-# Display certificate information (skip in test mode)
-if ! $DRY_RUN && ! $STAGING && ! $TEST_MODE; then
-    echo ""
-    echo "📊 Certificate Information:"
-    if $VERBOSE; then
-        certbot certificates
+main() {
+    parse_flags "$@"
+    ensure_root
+    info "${COLOR_KEY} lecbh - Let's Encrypt Certbot Helper"
+    info "----------------------------------------"
+
+    # Concurrency lock
+    if [[ -f "$LOCK_FILE" ]]; then
+        if grep -q '^PID=' "$LOCK_FILE"; then
+            existing_pid=$(grep '^PID=' "$LOCK_FILE" | cut -d'=' -f2)
+            if [[ -n "$existing_pid" && -d "/proc/$existing_pid" ]]; then
+                die "Another lecbh instance is running (PID $existing_pid). Use LECBH_LOCK_FILE to override."
+            fi
+        fi
+        warn "Stale lock file found; removing"
+        rm -f "$LOCK_FILE" || true
+    fi
+    echo "PID=$$" > "$LOCK_FILE" 2>/dev/null || warn "Cannot create lock file ($LOCK_FILE). Continuing without lock."
+
+    # Determine interactive inputs
+    DOMAIN_INPUT=${DOMAINS_OVERRIDE:-$DEFAULT_DOMAINS}
+    EMAIL=${EMAIL_OVERRIDE:-$DEFAULT_EMAIL}
+    SERVER=${SERVER:-$DEFAULT_SERVER}
+
+    if ! $UNATTENDED; then
+        read -r -p "🌐 Domains [$DOMAIN_INPUT]: " inp || true; DOMAIN_INPUT=${inp:-$DOMAIN_INPUT}
+        read -r -p "📧 Email [$EMAIL]: " inp || true; EMAIL=${inp:-$EMAIL}
+        read -r -p "🖥️ Server (apache/nginx) [$SERVER]: " inp || true; SERVER=${inp:-$SERVER}
+        read -r -p "🔧 Install method (snap/pip) [$INSTALL_METHOD]: " inp || true; INSTALL_METHOD=${inp:-$INSTALL_METHOD}
     else
-        certbot certificates | grep -E "Certificate Name:|Expiry Date:" | sed 's/^/   /'
+        log "Unattended mode values: domains=$DOMAIN_INPUT email=$EMAIL server=$SERVER method=$INSTALL_METHOD"
     fi
-fi
 
-# Final success message
-echo ""
-echo "✅ SSL setup complete!"
-if $DRY_RUN; then
-    echo "🧪 Dry run completed successfully — no certificates were issued."
-elif $STAGING; then
-    echo "🧪 Staging certificates issued — these are NOT trusted by browsers."
-    echo "   Run without --staging to get real certificates."
-elif $TEST_MODE; then
-    echo "🧪 Test mode completed successfully — this was just a simulation."
-else
-    echo "🔒 Your site should now be accessible via HTTPS."
-    echo "   Certificates will automatically renew when needed."
-fi
+    validate_email "$EMAIL"
+    IFS=',' read -r -a DOMAINS <<<"$DOMAIN_INPUT"
+    local cleaned=()
+    for d in "${DOMAINS[@]}"; do
+        d=$(echo "$d" | xargs)
+        [[ -z $d ]] && continue
+        validate_domain "$d"
+        cleaned+=("$d")
+    done
+    DOMAINS=(${cleaned[@]})
+    [[ ${#DOMAINS[@]} -gt 0 ]] || die "No valid domains provided"
 
-# Security recommendations
-echo ""
-echo "📝 Recommended next steps:"
-echo "   1. Test your site's SSL configuration: https://www.ssllabs.com/ssltest/"
-echo "   2. Consider setting up HTTP Strict Transport Security (HSTS)"
-echo "   3. Verify that automatic redirects from HTTP to HTTPS are working"
+    resolve_domain "${DOMAINS[0]}" || warn "Primary domain not resolvable"
 
-exit 0
+    ensure_prereqs
+    install_certbot
+    ensure_server_running "$SERVER"
+    check_ports
+    check_existing_certs
+    build_certbot_args
+    run_certbot
+    test_renewal
+    final_report
+
+    if $JSON_MODE; then
+        # Build JSON object
+        # Build proper JSON array of domains
+        if ((${#DOMAINS[@]})); then
+            domains_json="["
+            for i in "${!DOMAINS[@]}"; do
+                d=${DOMAINS[$i]}
+                if [[ $i -gt 0 ]]; then domains_json+=","; fi
+                domains_json+="\"$d\""
+            done
+            domains_json+="]"
+        else
+            domains_json="[]"
+        fi
+        cat <<JEOF
+{
+  "domains": $domains_json,
+  "email": "${EMAIL}",
+  "server": "${SERVER}",
+  "install_method": "${INSTALL_METHOD}",
+  "dry_run": ${DRY_RUN},
+  "staging": ${STAGING},
+  "test_mode": ${TEST_MODE},
+  "redirect": $(! $NO_REDIRECT && echo true || echo false),
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "version": "1.2.0"
+}
+JEOF
+    else
+        info "\n📝 Next steps:"
+        info "   1. Test SSL: https://www.ssllabs.com/ssltest/"
+        info "   2. Consider enabling HSTS"
+        info "   3. Verify HTTP->HTTPS redirect (if enabled)"
+    fi
+    # Optional delay (for testing lock behavior)
+    if [[ -n "${LECBH_SLEEP_BEFORE_EXIT:-}" ]]; then
+        sleep "$LECBH_SLEEP_BEFORE_EXIT"
+    fi
+}
+
+main "$@"
