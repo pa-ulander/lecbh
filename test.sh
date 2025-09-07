@@ -62,45 +62,63 @@ echo -e "${YELLOW}==== Running tests in test mode (mock installation) ====${NC}"
 run_test "Help command" "/app/lecbh.sh --help" || ((failed_tests++))
 
 # Test 2: Dry run with Apache (test mode)
-run_test "Dry run with Apache (test mode)" "/app/lecbh.sh --dry-run --unattended --test-mode" || ((failed_tests++))
+run_test "Dry run with Apache (test mode)" "/app/lecbh.sh --dry-run --unattended --test-mode --server=apache" || ((failed_tests++))
 
 # Test 3: Dry run with Nginx (test mode)
-run_test "Dry run with Nginx (test mode)" "export DEFAULT_SERVER=nginx && /app/lecbh.sh --dry-run --unattended --test-mode" || ((failed_tests++))
+run_test "Dry run with Nginx (test mode)" "/app/lecbh.sh --dry-run --unattended --test-mode --server=nginx" || ((failed_tests++))
 
 # Test 4: Verbose output (test mode)
-run_test "Verbose output (test mode)" "/app/lecbh.sh --dry-run --verbose --unattended --test-mode" || ((failed_tests++))
+run_test "Verbose output (test mode)" "/app/lecbh.sh --dry-run --verbose --unattended --test-mode --server=apache" || ((failed_tests++))
 
 # Test 5: Staging environment (test mode)
-run_test "Staging environment (test mode)" "/app/lecbh.sh --dry-run --staging --unattended --test-mode" || ((failed_tests++))
+run_test "Staging environment (test mode)" "/app/lecbh.sh --dry-run --staging --unattended --test-mode --server=apache" || ((failed_tests++))
 
 # Test 6: Multiple domains (test mode)
-run_test "Multiple domains (test mode)" "export DEFAULT_DOMAINS='example.com,www.example.com' && /app/lecbh.sh --dry-run --unattended --test-mode" || ((failed_tests++))
+run_test "Multiple domains (test mode)" "/app/lecbh.sh --dry-run --unattended --test-mode --server=apache --domains=example.com,www.example.com" || ((failed_tests++))
+
+# Test 7: JSON mode (test mode)
+run_test "JSON mode output" "/app/lecbh.sh --dry-run --unattended --test-mode --server=apache --domains=example.com,www.example.com --json | grep 'domains'" || ((failed_tests++))
+
+# Test 8: No redirect flag (ensure command runs)
+run_test "No redirect flag" "/app/lecbh.sh --dry-run --unattended --test-mode --no-redirect --server=apache --domains=example.com" || ((failed_tests++))
+
+# Test 9: Quiet + JSON (should still output JSON containing version)
+run_test "Quiet JSON mode" "/app/lecbh.sh --dry-run --unattended --test-mode --server=apache --domains=example.com --json | grep 'version'" || ((failed_tests++))
+
+# Test 10: Invalid domain (expect failure)
+run_test "Invalid domain" "/app/lecbh.sh --dry-run --unattended --test-mode --server=apache --domains=bad_domain --json" true || ((failed_tests++))
+
+# Test 11: Invalid email (expect failure)
+run_test "Invalid email" "/app/lecbh.sh --dry-run --unattended --test-mode --server=apache --domains=example.com --email=not-an-email --json" true || ((failed_tests++))
+
+# Test 12: Concurrency lock (second run should fail while first holds lock)
+run_test "Concurrency lock" "( LECBH_SLEEP_BEFORE_EXIT=3 /app/lecbh.sh --dry-run --unattended --test-mode --server=apache --domains=example.com & sleep 1; /app/lecbh.sh --dry-run --unattended --test-mode --server=apache --domains=example.com && exit 1 || exit 0 )" || ((failed_tests++))
 
 echo -e "${YELLOW}==== Running tests with pip installation method ====${NC}"
 
 # Install Python and pip in the container if they aren't already
 run_test "Install pip dependencies" "apt-get update && apt-get install -y python3-pip" || ((failed_tests++))
 
-# Test 7: Pip installation (dry run)
-run_test "Pip installation (dry run)" "/app/lecbh.sh --dry-run --unattended --pip" || ((failed_tests++))
+# Test 13: Pip installation (dry run)
+run_test "Pip installation (dry run)" "LECBH_TEST_INSTALL=1 /app/lecbh.sh --dry-run --staging --unattended --pip --test-mode --server=apache --domains=lecbhtest12345.com" || ((failed_tests++))
 
-# Test 8: Pip installation with Nginx (dry run)
-run_test "Pip with Nginx (dry run)" "export DEFAULT_SERVER=nginx && /app/lecbh.sh --dry-run --unattended --pip" || ((failed_tests++))
+# Test 14: Pip installation with Nginx (dry run)
+run_test "Pip with Nginx (dry run)" "LECBH_TEST_INSTALL=1 /app/lecbh.sh --dry-run --staging --unattended --pip --test-mode --server=nginx --domains=lecbhtest12345.com" || ((failed_tests++))
 
-# Test 9: Pip installation with staging (dry run)
-run_test "Pip with staging (dry run)" "/app/lecbh.sh --dry-run --staging --unattended --pip" || ((failed_tests++))
+# Test 15: Pip installation with staging (dry run)
+run_test "Pip with staging (dry run)" "LECBH_TEST_INSTALL=1 /app/lecbh.sh --dry-run --staging --unattended --pip --test-mode --server=apache --domains=lecbhtest12345.com" || ((failed_tests++))
 
 echo -e "${YELLOW}==== Running tests with snap installation method ====${NC}"
 echo -e "${YELLOW}Note: Snap tests may fail in standard Docker containers${NC}"
 echo -e "${YELLOW}The following tests are expected to pass in a real Ubuntu environment${NC}"
 
-# Test 10: Attempt snap installation (expected to fail in Docker)
-run_test "Snap installation attempt (dry run)" "/app/lecbh.sh --dry-run --unattended --snap" "true" || ((failed_tests++))
+# Test 16: Attempt snap installation (expected to fail in Docker)
+run_test "Snap installation attempt (dry run)" "/app/lecbh.sh --dry-run --unattended --snap --server=apache" "true" || ((failed_tests++))
 echo -e "${YELLOW}ℹ️ Snap installation test is expected to fail in standard Docker container.${NC}"
 echo -e "${YELLOW}ℹ️ This would work in a real Ubuntu environment or Docker with systemd support.${NC}"
 
-# Test with test mode and snap flag (should pass)
-run_test "Snap with test mode (mock installation)" "/app/lecbh.sh --dry-run --unattended --snap --test-mode" || ((failed_tests++))
+# Test 17: Snap with test mode (should pass)
+run_test "Snap with test mode (mock installation)" "/app/lecbh.sh --dry-run --unattended --snap --test-mode --server=apache" || ((failed_tests++))
 
 # Clean up
 echo -e "${YELLOW}Cleaning up Docker container...${NC}"
