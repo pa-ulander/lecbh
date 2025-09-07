@@ -1,0 +1,6 @@
+# CODEOWNERS
+# Syntax: path  owner
+# Fallback owner for all files:
+* @pa-ulander
+
+# Future: add plugin maintainers or area owners here.
