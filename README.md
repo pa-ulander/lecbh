@@ -17,6 +17,8 @@
     - [Examples](#examples)
     - [Default Configuration](#default-configuration)
   - [Certificate Renewal](#certificate-renewal)
+  - [JSON Output Mode](#json-output-mode)
+  - [Concurrency Lock](#concurrency-lock)
   - [Development and Testing](#development-and-testing)
   - [Troubleshooting](#troubleshooting)
     - [Common Issues](#common-issues)
@@ -37,6 +39,8 @@
 *   Works with unattended mode for automated deployments
 *   Supports installation via Snap (default) or pip
 *   Includes test mode for Docker/container environments
+*   JSON output mode for automation (`--json`)
+*   Concurrency lock to prevent overlapping runs
 
 ## Requirements
 
@@ -83,14 +87,19 @@ The script will prompt you for:
 Usage: sudo ./lecbh.sh [OPTIONS]
 
 Options:
-  --dry-run      Test run without making actual changes
-  --unattended   Run with default values without prompting
-  --verbose      Show more detailed output
-  --staging      Use Let's Encrypt staging environment (for testing)
-  --help         Show this help message
-  --test-mode    Skip installation for testing in containers
-  --pip          Use pip method for installing certbot
-  --snap         Use snap method for installing certbot (default)
+  --dry-run                Test run (no real certs issued)
+  --unattended             Non-interactive (use defaults / flags)
+  --verbose                Extra logging
+  --quiet                  Minimal output
+  --staging                Use Let's Encrypt staging API
+  --test-mode              Mock certbot (for CI / containers)
+  --pip / --snap           Select install method (default: snap)
+  --server=apache|nginx    Web server type
+  --email=ADDR             Account email
+  --domains=a.com,b.com    Comma separated domains list
+  --no-redirect            Disable HTTP→HTTPS redirect
+  --json                   Emit JSON summary (implies --quiet)
+  --help                   Show help
 ```
 
 ### Examples
@@ -133,16 +142,58 @@ sudo ./lecbh.sh --test-mode
 
 ### Default Configuration
 
-You can modify the default values at the top of the script:
+Defaults can be overridden via environment variables or flags. Examples:
 
 ```
-# -------------------- CONFIG --------------------
-DEFAULT_EMAIL="admin@example.com"
-DEFAULT_DOMAINS="example.com"
-DEFAULT_SERVER="apache"       # Change to nginx if preferred
-DEFAULT_INSTALL_METHOD="snap" # Options: snap, pip
-# -------------------------------------------------
+export DEFAULT_EMAIL="admin@example.com"
+export DEFAULT_DOMAINS="example.com,www.example.com"
+export DEFAULT_SERVER="nginx"
+export DEFAULT_INSTALL_METHOD="pip"
+sudo ./lecbh.sh --unattended
 ```
+
+Inline override:
+
+```
+DEFAULT_EMAIL=ops@example.org DEFAULT_DOMAINS="example.org,www.example.org" \
+  sudo ./lecbh.sh --unattended --server=nginx
+```
+## JSON Output Mode
+
+Use `--json` to produce a machine-readable summary. Helpful for pipelines or provisioning systems:
+
+```
+sudo ./lecbh.sh --unattended --server=nginx \
+  --domains=example.org,www.example.org --email=admin@example.org --json
+```
+
+Sample (values illustrative):
+
+```json
+{
+  "domains": ["example.org","www.example.org"],
+  "email": "admin@example.org",
+  "server": "nginx",
+  "install_method": "snap",
+  "dry_run": false,
+  "staging": false,
+  "test_mode": false,
+  "redirect": true,
+  "timestamp": "2025-01-01T00:00:00Z",
+  "version": "1.2.0"
+}
+```
+
+Parse with `jq`:
+
+```
+sudo ./lecbh.sh --unattended --json | jq -r '.domains[]'
+```
+
+## Concurrency Lock
+
+The script uses a lock file (`/var/run/lecbh.lock` by default) to prevent overlapping runs. Override with `LECBH_LOCK_FILE` if needed. Stale locks are removed automatically if the owning process no longer exists.
+
 
 ## Certificate Renewal
 
@@ -171,7 +222,7 @@ crontab -l | grep certbot
 
 ## Development and Testing
 
-For development and testing, use the `--staging` flag to avoid hitting Let's Encrypt rate limits. Staging certificates are not trusted by browsers but work identically for testing purposes.
+For development and testing, use the `--staging` flag to avoid rate limits, and `--test-mode` to mock certbot operations inside CI or container environments.
 
 Docker can be used for testing the script in an isolated environment. See the included Dockerfile and docker-compose.yml for details.
 
