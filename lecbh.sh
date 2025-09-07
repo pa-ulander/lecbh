@@ -397,7 +397,7 @@ main() {
   "test_mode": ${TEST_MODE},
   "redirect": $(! $NO_REDIRECT && echo true || echo false),
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "version": "1.2.0"
+  "version": "1.1.0"
 }
 JEOF
     else
