@@ -3,6 +3,7 @@
 # lecbh - Let's Encrypt Certbot Helper for Apache/Nginx on Ubuntu
 # https://github.com/pa-ulander/lecbh
 # Version: 1.1.0
+VERSION="1.1.0"
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -66,6 +67,7 @@ Options:
     --domains=a.com,b.com    Comma separated domain list
     --no-redirect            Do not force HTTP->HTTPS redirect
     --json                   Output machine-readable JSON summary (implies quiet except errors)
+    --version                Print version and exit
     --help                   Show this help and exit
 
 Examples:
@@ -96,6 +98,7 @@ parse_flags() {
             --domains=*) DOMAINS_OVERRIDE="${1#*=}" ;;
             --no-redirect) NO_REDIRECT=true ;;
             --json) JSON_MODE=true ; QUIET=true ; VERBOSE=false ;;
+            --version) echo "$VERSION"; exit 0 ;;
             --help) usage; exit 0 ;;
             *) die "Unknown option: $1 (use --help)" ;;
         esac
