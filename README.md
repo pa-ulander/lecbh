@@ -24,7 +24,8 @@
   - [Troubleshooting](#troubleshooting)
     - [Common Issues](#common-issues)
     - [Logs](#logs)
-    - [Contributing](#contributing)
+  - [Contributing](#contributing)
+    - [Looking to contribute?](#looking-to-contribute)
   - [Unlicense](#unlicense)
   - [Acknowledgments](#acknowledgments)
 
@@ -250,8 +251,17 @@ Certbot logs can be found at:
 
 *   `/var/log/letsencrypt/letsencrypt.log`
 
-### Contributing
+## Contributing
 If you find any problems or have suggestions about this script, please submit an issue. Moreover, any pull request, code review and feedback are welcome.
+
+### Looking to contribute? 
+
+Start with:
+
+- Read the [Roadmap](ROADMAP.md) for upcoming milestones
+- See [Contributing Guide](CONTRIBUTING.md) for workflow & standards
+- Pick an issue labeled `good-first-issue` or `m1-core`
+- Open draft PRs early - questions welcome
 
 ## Unlicense
 
