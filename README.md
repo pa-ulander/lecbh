@@ -16,9 +16,9 @@
     - [Command Line Options](#command-line-options)
     - [Examples](#examples)
     - [Default Configuration](#default-configuration)
-  - [Certificate Renewal](#certificate-renewal)
   - [JSON Output Mode](#json-output-mode)
   - [Concurrency Lock](#concurrency-lock)
+  - [Certificate Renewal](#certificate-renewal)
   - [Development and Testing](#development-and-testing)
   - [Troubleshooting](#troubleshooting)
     - [Common Issues](#common-issues)
@@ -180,7 +180,7 @@ Sample (values illustrative):
   "test_mode": false,
   "redirect": true,
   "timestamp": "2025-01-01T00:00:00Z",
-  "version": "1.2.0"
+  "version": "1.1.0"
 }
 ```
 
