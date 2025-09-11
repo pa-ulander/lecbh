@@ -251,9 +251,9 @@ Certbot logs can be found at:
 ### Contributing
 If you find any problems or have suggestions about this script, please submit an issue. Moreover, any pull request, code review and feedback are welcome.
 
-## Unlicense
+## MIT License
 
-This project is licensed under the UNLICENSE License - see the UNLICENSE file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
