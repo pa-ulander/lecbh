@@ -251,11 +251,12 @@ Certbot logs can be found at:
 ### Contributing
 If you find any problems or have suggestions about this script, please submit an issue. Moreover, any pull request, code review and feedback are welcome.
 
-## MIT License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
 ## Acknowledgments
 
 *   [Let's Encrypt](https://letsencrypt.org/) for providing free SSL certificates
 *   [Certbot](https://certbot.eff.org/) for the excellent certificate management tool
+
+## MIT License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
