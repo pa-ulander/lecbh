@@ -263,11 +263,12 @@ Start with:
 - Pick an issue labeled `good-first-issue` or `m1-core`
 - Open draft PRs early - questions welcome
 
-## Unlicense
-
-This project is licensed under the UNLICENSE License - see the UNLICENSE file for details.
-
 ## Acknowledgments
 
 *   [Let's Encrypt](https://letsencrypt.org/) for providing free SSL certificates
 *   [Certbot](https://certbot.eff.org/) for the excellent certificate management tool
+
+## MIT License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
